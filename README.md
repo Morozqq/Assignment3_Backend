@@ -1,5 +1,4 @@
-# Assignment3_Backend
- Assignment3_Backend
+Assignment3_Backend
 Install all the npm packages
 npm i -g nodemon
 npm i express-session
