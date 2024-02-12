@@ -68,6 +68,41 @@
             </div>
         </div>
         <h1>Welcome <%= username %>!</h1>
+
+        <h3>Request History</h3>
+        <ul class="list-group mt-4">
+            <% historyData.forEach(entry => { %>
+            <li class="list-group-item shadow-sm mb-3 bg-light">
+                <% if (entry.requestType === 'weather') { %>
+                <h5 class="text-primary mb-2">Weather Request</h5>
+                <p class="mb-2">
+                    For <%= entry.requestData.city %> at <%= entry.timestamp %>
+                </p>
+                <p class="mb-2">
+                    Temperature: <%= entry.responseData.temperature %>°C,
+                    Description: <%= entry.responseData.description %>
+                </p>
+                <p class="mb-2">
+                    Humidity: <%= entry.responseData.humidity %>, Wind Speed:
+                    <%= entry.responseData.windSpeed %>
+                </p>
+
+                <% } else if (entry.requestType === 'countrydata') { %>
+                <h5 class="text-success mb-2">Country Data Request</h5>
+                <p class="mb-2">
+                    For <%= entry.requestData.countryName %> at <%=
+                    entry.timestamp %>
+                </p>
+
+                <% } else if (entry.requestType === 'chucknorris') { %>
+                <h5 class="text-danger mb-2">Chuck Norris Joke Request</h5>
+                <p class="mb-2">At <%= entry.timestamp %></p>
+                <p class="mb-2">Joke: <%= entry.responseData.joke %></p>
+                <% } %>
+            </li>
+            <% }); %>
+        </ul>
+
         <div class="container">
             <footer class="py-3 my-4">
                 <p class="text-center text-muted">© Jeleubay Aslan, SE-2203</p>

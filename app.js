@@ -42,6 +42,14 @@ const User = mongoose.model("User", {
     deletedAt: Date,
 });
 
+const RequestHistory = mongoose.model("RequestHistory", {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    requestType: String, // e.g., "weather", "latlon", "countrydata", "chucknorris"
+    requestData: Object, // User input or request data
+    responseData: Object, // API response data
+    timestamp: { type: Date, default: Date.now },
+});
+
 app.get("/", (req, res) => {
     const isAuthenticated = req.session.user ? true : false;
     const user = isAuthenticated ? req.session.user : null;
@@ -117,14 +125,26 @@ app.post("/register", async (req, res) => {
     }
 });
 
-app.get("/user", (req, res) => {
+app.get("/user", async (req, res) => {
     if (!req.session.user || !req.session.user.username) {
         res.redirect("/login");
         return;
     }
 
-    const { username } = req.session.user;
-    res.render("user", { username });
+    try {
+        const userId = req.session.user._id;
+        const username = req.session.user.username;
+
+        // Fetch user's request history
+        const historyData = await RequestHistory.find({ userId })
+            .sort({ timestamp: -1 })
+            .limit(10);
+
+        res.render("user", { username, historyData });
+    } catch (error) {
+        console.error("Error fetching request history:", error);
+        res.status(500).send("Internal Server Error");
+    }
 });
 
 app.get("/admin", async (req, res) => {
@@ -226,17 +246,18 @@ app.get("/logout", (req, res) => {
 });
 
 // Function to get weather data by city
-function getWeatherByCity(city, res) {
+function getWeatherByCity(city, res, userId) {
     const url =
         "https://api.openweathermap.org/data/2.5/weather?q=" +
         city +
         "&appid=794f6646c3546306ac4be1843ed38e2a&units=metric";
+
     https.get(url, function (response) {
         console.log(response.statusCode);
 
         response.on("data", function (data) {
             const weatherdata = JSON.parse(data);
-            displayWeatherData(res, weatherdata);
+            displayWeatherData(res, weatherdata, userId);
         });
     });
 }
@@ -259,8 +280,28 @@ function getWeatherByLatLon(lat, lon, res) {
     });
 }
 
+async function saveRequestHistory(
+    userId,
+    requestType,
+    requestData,
+    responseData
+) {
+    const requestHistory = new RequestHistory({
+        userId: userId,
+        requestType: requestType,
+        requestData: requestData,
+        responseData: responseData,
+    });
+
+    try {
+        await requestHistory.save();
+    } catch (error) {
+        console.error("Error saving request history:", error);
+        throw error; // Re-throw the error to be caught by the calling function
+    }
+}
 // Function to display weather data
-function displayWeatherData(res, weatherdata) {
+function displayWeatherData(res, weatherdata, userId) {
     const city = weatherdata.name;
     const temp = weatherdata.main.temp;
     const feelsLike = weatherdata.main.feels_like;
@@ -274,12 +315,12 @@ function displayWeatherData(res, weatherdata) {
     const countryCode = weatherdata.sys.country;
     const rainVolume = weatherdata.rain ? weatherdata.rain["3h"] || 0 : 0;
 
-    // Send a JSON response
-    res.json({
+    // Store request and response data in MongoDB
+    const requestData = { city };
+    const responseData = {
         temperature: temp,
         description: description,
         iconURL: imgURL,
-        city: city,
         feelsLike: feelsLike,
         coordinates: coordinates,
         humidity: humidity,
@@ -287,11 +328,21 @@ function displayWeatherData(res, weatherdata) {
         windSpeed: windSpeed,
         countryCode: countryCode,
         rainVolume: rainVolume,
-    });
+    };
+
+    // Save the request history
+    try {
+        saveRequestHistory(userId, "weather", requestData, responseData);
+        // Send a JSON response
+        res.json(responseData);
+    } catch (error) {
+        console.error("Error handling request history:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
 }
 
 // Function to get country data by name
-function getCountryData(countryName, res) {
+function getCountryData(countryName, res, userId) {
     const apiUrl = `https://restcountries.com/v3.1/name/${countryName}`;
 
     // Make an HTTP GET request
@@ -305,7 +356,7 @@ function getCountryData(countryName, res) {
         response.on("end", () => {
             try {
                 const countryData = JSON.parse(data)[0]; // Assuming the first result if there are multiple matches
-                displayCountryData(res, countryData);
+                displayCountryData(res, countryData, userId);
             } catch (error) {
                 console.error("Error parsing country data:", error.message);
                 res.status(500).json({ error: "Internal Server Error" });
@@ -323,13 +374,31 @@ function getCountryData(countryName, res) {
 }
 
 // Function to display country data
-function displayCountryData(res, countryData) {
+async function displayCountryData(res, countryData, userId) {
     console.log("Country Data:", countryData);
-    res.json(countryData);
+
+    // Store request and response data in MongoDB
+    const requestData = { countryName: countryData.name.common };
+    const responseData = { countryData };
+
+    // Save the request history
+    try {
+        await saveRequestHistory(
+            userId,
+            "countrydata",
+            requestData,
+            responseData
+        );
+        // Send a JSON response
+        res.json(countryData);
+    } catch (error) {
+        console.error("Error handling request history:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
 }
 
 // Function to get Chuck Norris joke
-function getChuckNorrisJoke(res) {
+function getChuckNorrisJoke(res, userId) {
     const chuckNorrisUrl = "https://api.chucknorris.io/jokes/random";
 
     https.get(chuckNorrisUrl, function (response) {
@@ -337,6 +406,19 @@ function getChuckNorrisJoke(res) {
 
         response.on("data", function (data) {
             const jokeData = JSON.parse(data);
+
+            // Store request and response data in MongoDB
+            const requestData = {};
+            const responseData = { joke: jokeData.value };
+
+            // Save the request history
+            saveRequestHistory(
+                userId,
+                "chucknorris",
+                requestData,
+                responseData
+            );
+
             res.json({ joke: jokeData.value });
         });
     });
@@ -344,13 +426,17 @@ function getChuckNorrisJoke(res) {
 
 // Route for Chuck Norris joke
 app.get("/chucknorris", (req, res) => {
-    getChuckNorrisJoke(res);
+    const userId = req.session.user ? req.session.user._id : null;
+    getChuckNorrisJoke(res, userId);
 });
 
 // Route for city weather
 app.post("/weather", (req, res) => {
     const city = req.body.city;
-    getWeatherByCity(city, res);
+    const userId = req.session.user ? req.session.user._id : null; // Retrieve userId from the session
+
+    // Pass userId to getWeatherByCity function
+    getWeatherByCity(city, res, userId);
 });
 
 // Route for latitude and longitude weather
@@ -363,7 +449,10 @@ app.post("/latlon", (req, res) => {
 // Route for country data
 app.post("/countrydata", (req, res) => {
     const countryName = req.body.countryName;
-    getCountryData(countryName, res);
+    const userId = req.session.user ? req.session.user._id : null; // Retrieve userId from the session
+
+    // Pass userId to getCountryData function
+    getCountryData(countryName, res, userId);
 });
 
 app.listen(3000, () => {
