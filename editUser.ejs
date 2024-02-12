@@ -1,0 +1,18 @@
+<h1>Edit User</h1>
+
+<form action="/admin/edit/<%= user._id %>" method="post">
+    <label for="newUsername">New Username:</label>
+    <input
+        type="text"
+        id="newUsername"
+        name="newUsername"
+        value="<%= user.username %>"
+        required
+    />
+
+    <!-- Add a password field -->
+    <label for="newPassword">New Password:</label>
+    <input type="password" id="newPassword" name="newPassword" required />
+
+    <button type="submit">Save Changes</button>
+</form>
